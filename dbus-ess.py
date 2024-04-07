@@ -115,15 +115,9 @@ class ESS(object):
             self.pvavg = calculate_rtt(self.pvavg, ppv, scale=0.1)
 
         pbatt = self._dbusmonitor.get_value("com.victronenergy.system", "/Dc/Battery/Power")
-        logging.info(f"th: {th}, state: {chgmode}, pbatt: {pbatt}")
 
         pdest = 0
-        if th:
-            pass
-            # if self.pbatt:
-                # logging.info(f"resetting pbatt...")
-                # self.pbatt = 0
-        else:
+        if not th:
             if chgmode == 0: # bulk
                 pdest = 0.75*self.pvavg
             elif chgmode == 1: # balance
@@ -141,7 +135,8 @@ class ESS(object):
                 else:
                     pdest = self.pbatt
 
-        logging.info(f"batt reserve: {self.pbatt}, pdest: {pdest}")
+        logging.info(f"***")
+        logging.info(f"pbatt: {pbatt:.0f}, batt reserve: {self.pbatt:.0f}, pdest: {pdest:.0f}")
         self.pbatt = calculate_rtt(self.pbatt, pdest, scale=0.05)
         pbattchg = int(self.pbatt)
 
@@ -176,7 +171,7 @@ class ESS(object):
 
         out = round( max(0, y) )
 
-        logging.info(f"p_avail: {e:.0f}, e: {e:.0f}, yP: {yp:.2f}, yI: {yi:.2f}, out: {out}, ysum: {self.ysum} ({ymaxneg}..{ymaxpos})")
+        logging.info(f"th: {th}, state: {chgmode}, p_avail/e: {e:.0f}, yP: {yp:.2f}, yI: {yi:.2f}, out: {out}, ysum: {self.ysum} ({ymaxneg}..{ymaxpos})")
 
         if out != self.lastout:
             self.kettleDimmer.publish(f"{out}") # xxx errorhandling
