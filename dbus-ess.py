@@ -157,7 +157,7 @@ class ESS(object):
         Ki = 0.005 # 0.0025 # 0.0015
 
         ymaxpos = maxout/Ki
-        ymaxneg = -ymaxpos/10
+        ymaxneg = 0 # -ymaxpos/10
 
         if self.ysum > ymaxpos:
             self.ysum = ymaxpos
