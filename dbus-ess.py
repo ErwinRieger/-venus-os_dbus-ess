@@ -48,6 +48,7 @@ class ESS(object):
                     '/Ac/Consumption/L1/Power': dummy,
                     '/Ac/Consumption/L2/Power': dummy,
                     '/Ac/Consumption/L3/Power': dummy,
+                    '/Ac/ActiveIn/L1/Power': dummy,
                     },
                 'com.victronenergy.battery': { '/Ess/Throttling': dummy, '/Ess/Prequest': dummy, '/Ess/Chgmode': dummy }  ,
                 }
@@ -93,9 +94,10 @@ class ESS(object):
         self.pvavg = 0
         self.pbatt = 0
 
+        self.logtime = 0
+
         # GLib.timeout_add(1000, self.update)
         GLib.timeout_add(1000, exit_on_error, self.update)
-
 
     def update(self):
 
@@ -114,7 +116,7 @@ class ESS(object):
         else:
             self.pvavg = calculate_rtt(self.pvavg, ppv, scale=0.1)
 
-        pbatt = self._dbusmonitor.get_value("com.victronenergy.system", "/Dc/Battery/Power")
+        pbatt = self._dbusmonitor.get_value("com.victronenergy.system", "/Dc/Battery/Power") or 0
 
         pdest = 0
         if not th:
@@ -135,8 +137,6 @@ class ESS(object):
                 else:
                     pdest = self.pbatt
 
-        logging.info(f"***")
-        logging.info(f"pbatt: {pbatt:.0f}, batt reserve: {self.pbatt:.0f}, pdest: {pdest:.0f}")
         self.pbatt = calculate_rtt(self.pbatt, pdest, scale=0.05)
         pbattchg = int(self.pbatt)
 
@@ -144,10 +144,10 @@ class ESS(object):
         if chgmode == 2: # sink
             battdsc = 50
 
-        # p_avail = self.pvavg - powerconsumption - pbattchg + battdsc
-        e = self.pvavg - powerconsumption - pbattchg + battdsc
+        acin = self._dbusmonitor.get_value("com.victronenergy.system", "/Ac/ActiveIn/L1/Power") or 0
 
-        logging.info(f"p_avail {e:.0f} = pvavg {self.pvavg:.0f} - powerconsumption {powerconsumption} - pbattchg {pbattchg} + battdsc {battdsc}")
+        # p_avail = self.pvavg - powerconsumption - pbattchg + battdsc
+        e = self.pvavg + acin - powerconsumption - pbattchg + battdsc
 
         maxout = 100
 
@@ -171,7 +171,12 @@ class ESS(object):
 
         out = round( max(0, y) )
 
-        logging.info(f"th: {th}, state: {chgmode}, p_avail/e: {e:.0f}, yP: {yp:.2f}, yI: {yi:.2f}, out: {out}, ysum: {self.ysum} ({ymaxneg}..{ymaxpos})")
+        if (self.logtime % 10) == 0:
+            logging.info(f"***")
+            logging.info(f"pbatt: {pbatt:.0f}, batt reserve: {self.pbatt:.0f}, pdest: {pdest:.0f}")
+            logging.info(f"p_avail {e:.0f} = pvavg {self.pvavg:.0f} + acin {acin:.0f} - powerconsumption {powerconsumption:.0f} - pbattchg {pbattchg:.0f} + battdsc {battdsc:.0f}")
+            logging.info(f"th: {th}, state: {chgmode}, p_avail/e: {e:.0f}, yP: {yp:.2f}, yI: {yi:.2f}, out: {out}, ysum: {self.ysum} ({ymaxneg}..{ymaxpos})")
+        self.logtime += 1
 
         if out != self.lastout:
             self.kettleDimmer.publish(f"{out}") # xxx errorhandling
