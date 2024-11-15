@@ -48,12 +48,12 @@ class ESS(object):
                     '/Ac/Consumption/L1/Power': dummy,
                     '/Ac/Consumption/L2/Power': dummy,
                     '/Ac/Consumption/L3/Power': dummy,
-                    '/Ac/ActiveIn/L1/Power': dummy,
+                    '/Ac/ActiveIn/Source': dummy
                     },
-                'com.victronenergy.battery': { '/Ess/Throttling': dummy, '/Ess/Prequest': dummy, '/Ess/Chgmode': dummy }  ,
+                'com.victronenergy.battery': { '/Ess/Throttling': dummy, '/Ess/Prequest': dummy, '/Ess/Chgmode': dummy }
                 }
 
-        self._dbusmonitor = DbusMonitor(dbus_tree)
+        self._dbusmonitor = DbusMonitor(dbus_tree, valueChangedCallback=self.value_changed_wrapper)
 
         # com.victronenergy.battery.ttyUSB0
         battservices = self._get_connected_service_list(classfilter="com.victronenergy.battery")
@@ -83,6 +83,8 @@ class ESS(object):
         self._dbusservice.add_path('/Connected', 1)
 
         self.numberOfPhases = self._dbusmonitor.get_value("com.victronenergy.system", "/Ac/Consumption/NumberOfPhases")
+        self.acsource = self._dbusmonitor.get_value("com.victronenergy.system", "/Ac/ActiveIn/Source") or 0
+        logging.info(f"initial system:/Ac/ActiveIn/Source: {self.acsource}")
 
         self.kettleDimmer = libmqtt.MqttSwitch("kettleDimmer", "cmnd/tasmota_exess_power/Dimmer", rate=1)
         self.kettleDimmer.publish("0") # xxx errorhandling
@@ -100,6 +102,24 @@ class ESS(object):
         GLib.timeout_add(1000, exit_on_error, self.update)
 
     def update(self):
+
+        #
+        # Do not run the load when input is connected to mains, in this case we have
+        # not enough solar power to run the load.
+        #
+        # acsource is 240 if ac input is not connected, 0 when input switch is closed
+        if not self.acsource:
+
+            if (self.logtime % 10) == 0:
+                logging.info(f"***")
+                logging.info(f"Load off, ac in is connected.")
+            self.logtime += 1
+
+            if self.lastout != 0:
+                self.kettleDimmer.publish("0") # xxx errorhandling
+
+            self.lastout = 0
+            return True
 
         chgmode = self._dbusmonitor.get_value(self.battserviceName, "/Ess/Chgmode")
         th = self._dbusmonitor.get_value(self.battserviceName, "/Ess/Throttling")
@@ -144,10 +164,8 @@ class ESS(object):
         if chgmode == 2: # sink
             battdsc = 50
 
-        acin = self._dbusmonitor.get_value("com.victronenergy.system", "/Ac/ActiveIn/L1/Power") or 0
-
         # p_avail = self.pvavg - powerconsumption - pbattchg + battdsc
-        e = self.pvavg + acin - powerconsumption - pbattchg + battdsc
+        e = self.pvavg - powerconsumption - pbattchg + battdsc
 
         maxout = 100
 
@@ -174,7 +192,7 @@ class ESS(object):
         if (self.logtime % 10) == 0:
             logging.info(f"***")
             logging.info(f"pbatt: {pbatt:.0f}, batt reserve: {self.pbatt:.0f}, pdest: {pdest:.0f}")
-            logging.info(f"p_avail {e:.0f} = pvavg {self.pvavg:.0f} + acin {acin:.0f} - powerconsumption {powerconsumption:.0f} - pbattchg {pbattchg:.0f} + battdsc {battdsc:.0f}")
+            logging.info(f"p_avail {e:.0f} = pvavg {self.pvavg:.0f} - powerconsumption {powerconsumption:.0f} - pbattchg {pbattchg:.0f} + battdsc {battdsc:.0f}")
             logging.info(f"th: {th}, state: {chgmode}, p_avail/e: {e:.0f}, yP: {yp:.2f}, yI: {yi:.2f}, out: {out}, ysum: {self.ysum} ({ymaxneg}..{ymaxpos})")
         self.logtime += 1
 
@@ -187,6 +205,19 @@ class ESS(object):
     def _get_connected_service_list(self, classfilter=None):
         services = self._dbusmonitor.get_service_list(classfilter=classfilter)
         return services
+
+    # Calls value_changed with exception handling
+    def value_changed_wrapper(self, *args, **kwargs):
+        exit_on_error(self.value_changed, *args, **kwargs)
+
+    # /Ac/ActiveIn/Source
+    def value_changed(self, service, path, options, changes, deviceInstance):
+        # logging.info('value_changed %s %s %s' % (service, path, str(changes)))
+
+        if path == "/Ac/ActiveIn/Source":
+
+            self.acsource = changes["Value"] or 0
+            logging.info(f"update acsource: {self.acsource}")
 
 # === All code below is to simply run it from the commandline for debugging purposes ===
 
