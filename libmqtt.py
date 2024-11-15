@@ -66,9 +66,8 @@ class MqttSwitch:
             else:
                 logging.info(f"Failed to send message to topic {self.topic}")
 
-        else:
-
-            logging.info(f"throttling publish() {self.nextUpdate - t}...")
+        # else:
+            # logging.info(f"throttling publish() {self.nextUpdate - t}...")
 
         return status
 

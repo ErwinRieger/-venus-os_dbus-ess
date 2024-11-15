@@ -75,7 +75,7 @@ class ESS(object):
         self._dbusservice.add_path('/Mgmt/Connection', connection)
 
         # Create the mandatory objects
-        self._dbusservice.add_path('/DeviceInstance', 1) # deviceinstance)
+        self._dbusservice.add_path('/DeviceInstance', 1)
         self._dbusservice.add_path('/ProductId', 0)
         self._dbusservice.add_path('/ProductName', productname)
         self._dbusservice.add_path('/FirmwareVersion', 0)
@@ -86,19 +86,16 @@ class ESS(object):
         self.acsource = self._dbusmonitor.get_value("com.victronenergy.system", "/Ac/ActiveIn/Source") or 0
         logging.info(f"initial system:/Ac/ActiveIn/Source: {self.acsource}")
 
-        self.kettleDimmer = libmqtt.MqttSwitch("kettleDimmer", "cmnd/tasmota_exess_power/Dimmer", rate=1)
-        self.kettleDimmer.publish("0") # xxx errorhandling
-        self.lastout = -1
+        self.loadSwitch = libmqtt.MqttSwitch("DynamicLoadSwitch", "cmnd/tasmota_exess_power/Dimmer", rate=1)
+        self.loadSwitch.publish("0") # xxx errorhandling
 
         self.ysum = 0
-        self.ysum = 20000 # hack debug
 
         self.pvavg = 0
         self.pbatt = 0
 
         self.logtime = 0
 
-        # GLib.timeout_add(1000, self.update)
         GLib.timeout_add(1000, exit_on_error, self.update)
 
     def update(self):
@@ -112,13 +109,10 @@ class ESS(object):
 
             if (self.logtime % 10) == 0:
                 logging.info(f"***")
-                logging.info(f"Load off, ac in is connected.")
+                logging.info(f"Load off, AC IN is connected.")
             self.logtime += 1
 
-            if self.lastout != 0:
-                self.kettleDimmer.publish("0") # xxx errorhandling
-
-            self.lastout = 0
+            self.loadSwitch.publish("0") # xxx errorhandling
             return True
 
         chgmode = self._dbusmonitor.get_value(self.battserviceName, "/Ess/Chgmode")
@@ -196,10 +190,7 @@ class ESS(object):
             logging.info(f"th: {th}, state: {chgmode}, p_avail/e: {e:.0f}, yP: {yp:.2f}, yI: {yi:.2f}, out: {out}, ysum: {self.ysum} ({ymaxneg}..{ymaxpos})")
         self.logtime += 1
 
-        if out != self.lastout:
-            self.kettleDimmer.publish(f"{out}") # xxx errorhandling
-
-        self.lastout = out
+        self.loadSwitch.publish(f"{out}") # xxx errorhandling
         return True
 
     def _get_connected_service_list(self, classfilter=None):
