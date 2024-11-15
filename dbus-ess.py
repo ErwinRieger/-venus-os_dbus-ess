@@ -34,7 +34,7 @@ def calculate_rtt(load, rtt, scale=0.2):
 
 class ESS(object):
 
-    def __init__(self, productname='IBR PV Control', connection='pvcontrol'):
+    def __init__(self, productname='IBR dbus ess', connection='dbus-ess'):
 
         logging.debug("Service %s starting... " % servicename)
 
